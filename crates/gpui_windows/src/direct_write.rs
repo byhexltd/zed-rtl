@@ -2094,7 +2094,7 @@ mod tests {
                 let g: Vec<_> = run
                     .glyphs
                     .iter()
-                    .map(|g| (g.id.0, g.index, g.position.x.0))
+                    .map(|g| (g.id.0, g.index, g.position.x.as_f32()))
                     .collect();
                 eprintln!("{text:?} run {i}: {g:?}");
             }
