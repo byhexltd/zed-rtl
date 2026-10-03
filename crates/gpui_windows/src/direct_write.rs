@@ -1590,6 +1590,11 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             )?
         };
 
+        eprintln!(
+            "bidi={} text_pos={} len={} cluster_map={:?} glyphs={}",
+            glyphrun.bidiLevel, desc.textPosition, desc.stringLength, cluster_map, glyph_count
+        );
+
         let cluster_analyzer = ClusterAnalyzer::new(cluster_map, glyph_count);
         let mut utf16_idx = desc.textPosition as usize;
         let mut glyph_idx = 0;
@@ -1967,7 +1972,7 @@ mod tests {
     use crate::directx_devices::DirectXDevices;
     use anyhow::Result;
     use gpui::{
-        DevicePixels, Font, PlatformTextSystem, RenderGlyphParams, Rgba, bounds, point, px, size,
+        DevicePixels, Font, PlatformTextSystem, RenderGlyphParams, Rgba, bounds, point, px, size, FontRun,
     };
     use std::ffi::c_void;
     use windows::Win32::Graphics::Direct3D11::{
@@ -2074,6 +2079,27 @@ mod tests {
             "color glyph rasterization changed between batches; \
              render target contents are leaking into the glyph bitmaps"
         );
+        Ok(())
+    }
+
+    #[test]
+    fn rtl_probe() -> Result<()> {
+        let text_system = DirectWriteTextSystem::new(None)?;
+        let font = Font { family: "Segoe UI".into(), ..Default::default() };
+        let font_id = text_system.font_id(&font)?;
+        for text in ["سلام دنیا", "abc سلام def"] {
+            let runs = [FontRun { len: text.len(), font_id }];
+            let layout = text_system.layout_line(text, px(14.0), &runs);
+            for (i, run) in layout.runs.iter().enumerate() {
+                let g: Vec<_> = run
+                    .glyphs
+                    .iter()
+                    .map(|g| (g.id.0, g.index, g.position.x.0))
+                    .collect();
+                eprintln!("{text:?} run {i}: {g:?}");
+            }
+            eprintln!("width = {:?}", layout.width);
+        }
         Ok(())
     }
 
