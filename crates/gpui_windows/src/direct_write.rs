@@ -1612,6 +1612,9 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                 .iter()
                 .enumerate()
             {
+                let id = GlyphId(*glyph_id as u32);
+                let is_emoji =
+                    color_font && is_color_glyph(font_face, id, &context.components.factory);
                 let this_glyph_idx = glyph_idx + cluster_glyph_idx;
                 rtl_cum += glyph_advances[this_glyph_idx];
                 let x = if is_rtl {
