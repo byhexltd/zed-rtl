@@ -1595,6 +1595,11 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             glyphrun.bidiLevel, desc.textPosition, desc.stringLength, cluster_map, glyph_count
         );
 
+        let is_rtl = glyphrun.bidiLevel % 2 == 1;
+        let run_start = context.width;
+        let run_width: f32 = glyph_advances.iter().sum();
+        let mut rtl_cum = 0.0f32;
+
         let cluster_analyzer = ClusterAnalyzer::new(cluster_map, glyph_count);
         let mut utf16_idx = desc.textPosition as usize;
         let mut glyph_idx = 0;
@@ -1607,16 +1612,16 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                 .iter()
                 .enumerate()
             {
-                let id = GlyphId(*glyph_id as u32);
-                let is_emoji =
-                    color_font && is_color_glyph(font_face, id, &context.components.factory);
                 let this_glyph_idx = glyph_idx + cluster_glyph_idx;
+                rtl_cum += glyph_advances[this_glyph_idx];
+                let x = if is_rtl {
+                    run_start + run_width - rtl_cum - glyph_offsets[this_glyph_idx].advanceOffset
+                } else {
+                    context.width + glyph_offsets[this_glyph_idx].advanceOffset
+                };
                 glyphs.push(ShapedGlyph {
                     id,
-                    position: point(
-                        px(context.width + glyph_offsets[this_glyph_idx].advanceOffset),
-                        px(-glyph_offsets[this_glyph_idx].ascenderOffset),
-                    ),
+                    position: point(px(x), px(-glyph_offsets[this_glyph_idx].ascenderOffset)),
                     index: context.index_converter.utf8_ix,
                     is_emoji,
                 });
@@ -2100,6 +2105,18 @@ mod tests {
             }
             eprintln!("width = {:?}", layout.width);
         }
+
+        for ch in ["س", "ل", "ا", "م", "لا"] {
+            let runs = [FontRun { len: ch.len(), font_id }];
+            let l = text_system.layout_line(ch, px(14.0), &runs);
+            let ids: Vec<_> = l
+                .runs
+                .iter()
+                .flat_map(|r| r.glyphs.iter().map(|g| g.id.0))
+                .collect();
+            eprintln!("alone {ch:?}: {ids:?}");
+        }
+        
         Ok(())
     }
 
