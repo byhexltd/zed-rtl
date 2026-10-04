@@ -1627,6 +1627,8 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                     position: point(px(x), px(-glyph_offsets[this_glyph_idx].ascenderOffset)),
                     index: context.index_converter.utf8_ix,
                     is_emoji,
+                    advance: px(glyph_advances[this_glyph_idx]),
+                    is_rtl,
                 });
                 context.width += glyph_advances[this_glyph_idx];
             }
@@ -2119,6 +2121,16 @@ mod tests {
                 .collect();
             eprintln!("alone {ch:?}: {ids:?}");
         }
+
+            let text = "سلام دنیا";
+            let runs = [FontRun { len: text.len(), font_id }];
+            let layout = text_system.layout_line(text, px(14.0), &runs);
+            for i in [0usize, 2, 4, 6, 8, 9, 11, 13, 15, 17] {
+                eprintln!("x_for_index({i}) = {:?}", layout.x_for_index(i));
+            }
+            for x in [0.0f32, 10.0, 25.0, 45.0, 55.0] {
+                eprintln!("closest_index_for_x({x}) = {}", layout.closest_index_for_x(px(x)));
+            }
         
         Ok(())
     }

@@ -54,6 +54,11 @@ pub struct ShapedGlyph {
 
     /// Whether this glyph is an emoji
     pub is_emoji: bool,
+
+    /// Advance width of this glyph.
+    pub advance: Pixels,
+    /// True when the glyph belongs to a right-to-left run.
+    pub is_rtl: bool,
 }
 
 impl LineLayout {
@@ -76,6 +81,30 @@ impl LineLayout {
     /// closest_index_for_x returns the character boundary closest to the given x coordinate
     /// (e.g. to handle aligning up/down arrow keys)
     pub fn closest_index_for_x(&self, x: Pixels) -> usize {
+        if self
+            .runs
+            .iter()
+            .any(|r| r.glyphs.iter().any(|g| g.is_rtl))
+        {
+            let mut best_index = self.len;
+            let mut best_dist = (self.x_for_index(self.len).as_f32() - x.as_f32()).abs();
+            for run in &self.runs {
+                for glyph in &run.glyphs {
+                    let gx = if glyph.is_rtl {
+                        glyph.position.x + glyph.advance
+                    } else {
+                        glyph.position.x
+                    };
+                    let dist = (gx.as_f32() - x.as_f32()).abs();
+                    if dist < best_dist {
+                        best_dist = dist;
+                        best_index = glyph.index;
+                    }
+                }
+            }
+            return best_index;
+        }
+
         let mut prev_index = 0;
         let mut prev_x = px(0.);
 
@@ -106,14 +135,39 @@ impl LineLayout {
 
     /// The x position of the character at the given index
     pub fn x_for_index(&self, index: usize) -> Pixels {
+        let edge = |g: &ShapedGlyph| {
+            if g.is_rtl {
+                g.position.x + g.advance
+            } else {
+                g.position.x
+            }
+        };
+
+        let mut next: Option<&ShapedGlyph> = None;
+        let mut last: Option<&ShapedGlyph> = None;
+
         for run in &self.runs {
             for glyph in &run.glyphs {
-                if glyph.index >= index {
-                    return glyph.position.x;
+                if glyph.index == index {
+                    return edge(glyph);
+                }
+                if glyph.index > index && next.map_or(true, |n| glyph.index < n.index) {
+                    next = Some(glyph);
+                }
+                if last.map_or(true, |l| glyph.index > l.index) {
+                    last = Some(glyph);
                 }
             }
         }
-        self.width
+
+        if let Some(g) = next {
+            return edge(g);
+        }
+
+        match last {
+            Some(g) if g.is_rtl => g.position.x,
+            _ => self.width,
+        }
     }
 
     /// The corresponding Font at the given index
@@ -160,6 +214,8 @@ impl LineLayout {
                         position: point(g.position.x - x_offset, g.position.y),
                         index: g.index - byte_index,
                         is_emoji: g.is_emoji,
+                        advance: px(0.),
+                        is_rtl: false,
                     })
                     .collect();
                 right_runs.push(ShapedRun {
@@ -1080,6 +1136,8 @@ mod tests {
             position: point(px(x), px(0.)),
             index,
             is_emoji: false,
+            advance: px(0.),
+            is_rtl: false,
         }
     }
 

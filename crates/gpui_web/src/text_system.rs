@@ -227,6 +227,8 @@ impl WebTextSystem {
                         position: glyphs.position,
                         index: candidate.source.start,
                         is_emoji: candidate.color,
+                        advance: px(0.),
+                        is_rtl: false,
                     },
                     width_delta: px(metrics.advance) - old_width,
                 })

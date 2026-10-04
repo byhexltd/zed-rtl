@@ -613,6 +613,8 @@ impl MacTextSystemState {
                     position: point(position.x as f32, position.y as f32).map(px),
                     index: ix_converter.utf8_ix,
                     is_emoji: self.is_emoji(font_id),
+                    advance: px(0.),
+                    is_rtl: false,
                 });
             }
         }

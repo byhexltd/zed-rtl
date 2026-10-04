@@ -212,6 +212,8 @@ mod tests {
             position: point(px(x), px(2.0)),
             index,
             is_emoji: color,
+            advance: px(0.),
+            is_rtl: false,
         }
     }
 
@@ -362,6 +364,8 @@ mod tests {
             position: point(px(index as f32 * 10.0), px(2.0)),
             index: index * 2,
             is_emoji: false,
+            advance: px(0.),
+            is_rtl: false,
         }
     }
 

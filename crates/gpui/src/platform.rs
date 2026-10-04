@@ -1566,6 +1566,8 @@ impl PlatformTextSystem for NoopTextSystem {
                     position: point(position, px(0.)),
                     index: ix,
                     is_emoji: glyph.0 == 2,
+                    advance: px(0.),
+                    is_rtl: false,
                 });
                 if glyph.0 == 2 {
                     position += em_width * 2.0;
