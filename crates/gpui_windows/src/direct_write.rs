@@ -1505,7 +1505,7 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
     fn DrawGlyphRun(
         &self,
         clientdrawingcontext: *const ::core::ffi::c_void,
-        _baselineoriginx: f32,
+        baselineoriginx: f32,
         _baselineoriginy: f32,
         _measuringmode: DWRITE_MEASURING_MODE,
         glyphrun: *const DWRITE_GLYPH_RUN,
@@ -1591,14 +1591,19 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
         };
 
         eprintln!(
-            "bidi={} text_pos={} len={} cluster_map={:?} glyphs={}",
-            glyphrun.bidiLevel, desc.textPosition, desc.stringLength, cluster_map, glyph_count
+            "bidi={} text_pos={} len={} origin={} glyphs={}",
+            glyphrun.bidiLevel, desc.textPosition, desc.stringLength, baselineoriginx, glyph_count
         );
 
-        let is_rtl = glyphrun.bidiLevel % 2 == 1;
-        let run_start = context.width;
+         let is_rtl = glyphrun.bidiLevel % 2 == 1;
         let run_width: f32 = glyph_advances.iter().sum();
-        let mut rtl_cum = 0.0f32;
+        // DirectWrite میدهد: برای run های RTL مبدأ لبه‌ی راست است
+        let run_left = if is_rtl {
+            baselineoriginx - run_width
+        } else {
+            baselineoriginx
+        };
+        let mut pen = 0.0f32;
 
         let cluster_analyzer = ClusterAnalyzer::new(cluster_map, glyph_count);
         let mut utf16_idx = desc.textPosition as usize;
@@ -1616,24 +1621,27 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
                 let is_emoji =
                     color_font && is_color_glyph(font_face, id, &context.components.factory);
                 let this_glyph_idx = glyph_idx + cluster_glyph_idx;
-                rtl_cum += glyph_advances[this_glyph_idx];
+                let advance = glyph_advances[this_glyph_idx];
+                let offset = glyph_offsets[this_glyph_idx].advanceOffset;
                 let x = if is_rtl {
-                    run_start + run_width - rtl_cum - glyph_offsets[this_glyph_idx].advanceOffset
+                    run_left + run_width - (pen + advance) - offset
                 } else {
-                    context.width + glyph_offsets[this_glyph_idx].advanceOffset
+                    run_left + pen + offset
                 };
+                pen += advance;
                 glyphs.push(ShapedGlyph {
                     id,
                     position: point(px(x), px(-glyph_offsets[this_glyph_idx].ascenderOffset)),
                     index: context.index_converter.utf8_ix,
                     is_emoji,
-                    advance: px(glyph_advances[this_glyph_idx]),
+                    advance: px(advance),
                     is_rtl,
                 });
-                context.width += glyph_advances[this_glyph_idx];
             }
             glyph_idx += cluster_glyph_count;
         }
+        
+        context.width = context.width.max(run_left + run_width);
         context.runs.push(ShapedRun { font_id, glyphs });
         Ok(())
     }
@@ -2122,15 +2130,40 @@ mod tests {
             eprintln!("alone {ch:?}: {ids:?}");
         }
 
-            let text = "سلام دنیا";
+        let text = "سلام دنیا";
+        let runs = [FontRun { len: text.len(), font_id }];
+        let layout = text_system.layout_line(text, px(14.0), &runs);
+        for i in [0usize, 2, 4, 6, 8, 9, 11, 13, 15, 17] {
+            eprintln!("x_for_index({i}) = {:?}", layout.x_for_index(i));
+        }
+        for x in [0.0f32, 10.0, 25.0, 45.0, 55.0] {
+            eprintln!("closest_index_for_x({x}) = {}", layout.closest_index_for_x(px(x)));
+        }
+
+        for family in ["Segoe UI", "Consolas"] {
+            let Ok(font_id) = text_system.font_id(&Font {
+                family: family.into(),
+                ..Default::default()
+            }) else {
+                continue;
+            };
+            let text = "میشه معماری کلی سیستم";
             let runs = [FontRun { len: text.len(), font_id }];
             let layout = text_system.layout_line(text, px(14.0), &runs);
-            for i in [0usize, 2, 4, 6, 8, 9, 11, 13, 15, 17] {
-                eprintln!("x_for_index({i}) = {:?}", layout.x_for_index(i));
-            }
-            for x in [0.0f32, 10.0, 25.0, 45.0, 55.0] {
-                eprintln!("closest_index_for_x({x}) = {}", layout.closest_index_for_x(px(x)));
-            }
+            let mut pts: Vec<(usize, f32)> = layout
+                .runs
+                .iter()
+                .flat_map(|r| r.glyphs.iter())
+                .map(|g| (g.index, g.position.x.as_f32()))
+                .collect();
+            pts.sort_by_key(|p| p.0);
+            let ok = pts.windows(2).all(|w| w[1].1 <= w[0].1);
+            eprintln!(
+                "{family}: runs={} rtl_order_ok={ok} width={:?}",
+                layout.runs.len(),
+                layout.width
+            );
+        }
         
         Ok(())
     }
