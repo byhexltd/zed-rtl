@@ -617,6 +617,16 @@ impl DirectWriteState {
                 break_ligatures = !break_ligatures;
             }
 
+            let mut x_offset = 0.0f32;
+            if first_strong_is_rtl(text) {
+                let mut metrics = DWRITE_TEXT_METRICS::default();
+                text_layout.GetMetrics(&mut metrics)?;
+                text_layout.SetReadingDirection(DWRITE_READING_DIRECTION_RIGHT_TO_LEFT)?;
+                text_layout.SetMaxWidth(metrics.widthIncludingTrailingWhitespace.ceil() + 1.0)?;
+                text_layout.GetMetrics(&mut metrics)?;
+                x_offset = metrics.left;
+            }
+
             let mut runs = Vec::new();
             let mut renderer_context = RendererContext {
                 text_system: self,
@@ -624,6 +634,7 @@ impl DirectWriteState {
                 index_converter: StringIndexConverter::new(text),
                 runs: &mut runs,
                 width: 0.0,
+                x_offset,
             };
             text_layout.Draw(
                 Some((&raw mut renderer_context).cast::<c_void>().cast_const()),
@@ -1407,6 +1418,7 @@ struct RendererContext<'t, 'a, 'b> {
     index_converter: StringIndexConverter<'a>,
     runs: &'b mut Vec<ShapedRun>,
     width: f32,
+    x_offset: f32,
 }
 
 #[derive(Debug)]
@@ -1595,14 +1607,16 @@ impl IDWriteTextRenderer_Impl for TextRenderer_Impl {
             glyphrun.bidiLevel, desc.textPosition, desc.stringLength, baselineoriginx, glyph_count
         );
 
-         let is_rtl = glyphrun.bidiLevel % 2 == 1;
+        let is_rtl = glyphrun.bidiLevel % 2 == 1;
         let run_width: f32 = glyph_advances.iter().sum();
-        // DirectWrite میدهد: برای run های RTL مبدأ لبه‌ی راست است
+        
+        let origin_x = baselineoriginx - context.x_offset;
         let run_left = if is_rtl {
-            baselineoriginx - run_width
+            origin_x - run_width
         } else {
-            baselineoriginx
+            origin_x
         };
+
         let mut pen = 0.0f32;
 
         let cluster_analyzer = ClusterAnalyzer::new(cluster_map, glyph_count);
@@ -1750,6 +1764,16 @@ impl<'a> StringIndexConverter<'a> {
             self.utf16_ix += c.len_utf16();
         }
         self.utf8_ix = self.text.len();
+    }
+}
+
+fn first_strong_is_rtl(text: &str) -> bool {
+    match text.chars().find(|c| !c.is_whitespace()) {
+        Some(c) if c.is_alphabetic() => matches!(
+            c as u32,
+            0x0590..=0x08FF | 0xFB1D..=0xFDFF | 0xFE70..=0xFEFF | 0x10800..=0x10FFF | 0x1E800..=0x1EFFF
+        ),
+        _ => false,
     }
 }
 
@@ -2164,6 +2188,29 @@ mod tests {
                 layout.width
             );
         }
+
+        let font_id = text_system.font_id(&Font {
+            family: "Segoe UI".into(),
+            ..Default::default()
+        })?;
+        let text = "سلام hello دنیا";
+        let runs = [FontRun { len: text.len(), font_id }];
+        let layout = text_system.layout_line(text, px(14.0), &runs);
+        let x_at = |idx: usize| {
+            layout
+                .runs
+                .iter()
+                .flat_map(|r| r.glyphs.iter())
+                .find(|g| g.index == idx)
+                .map(|g| g.position.x.as_f32())
+        };
+        eprintln!(
+            "mixed: first_persian={:?} english={:?} last_persian={:?} width={:?}",
+            x_at(0),
+            x_at(9),
+            x_at(15),
+            layout.width
+        );
         
         Ok(())
     }

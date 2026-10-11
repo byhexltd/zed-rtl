@@ -166,6 +166,14 @@ impl LineLayout {
 
         match last {
             Some(g) if g.is_rtl => g.position.x,
+            Some(g)
+                if self
+                    .runs
+                    .iter()
+                    .any(|r| r.glyphs.iter().any(|x| x.is_rtl)) =>
+            {
+                g.position.x + g.advance
+            }
             _ => self.width,
         }
     }
